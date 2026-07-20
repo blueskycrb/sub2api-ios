@@ -733,4 +733,41 @@ final class AccountsViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
+
+    /// 更新 API Key / Base URL（apikey、upstream 账号）
+    /// - apiKey 留空表示不修改已有密钥（后端敏感字段合并保留）
+    func updateCredentials(id: Int, apiKey: String?, baseURL: String?, hasExistingAPIKey: Bool) async -> Bool {
+        isActing = true
+        defer { isActing = false }
+        errorMessage = nil
+        successMessage = nil
+
+        let trimmedKey = (apiKey ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBase = (baseURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmedKey.isEmpty && !hasExistingAPIKey {
+            errorMessage = "请填写 API Key"
+            return false
+        }
+
+        var cred = AdminAccountCredentialsUpdate()
+        if !trimmedKey.isEmpty {
+            cred.api_key = trimmedKey
+        }
+        // 始终提交 base_url，与网页版编辑逻辑一致
+        cred.base_url = trimmedBase
+
+        do {
+            let updated = try await Sub2APIService.updateAdminAccount(
+                id: id,
+                UpdateAdminAccountRequest(credentials: cred)
+            )
+            replace(updated)
+            successMessage = "凭证已更新"
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
 }

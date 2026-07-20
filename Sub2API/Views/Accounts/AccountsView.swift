@@ -183,6 +183,10 @@ struct AccountDetailView: View {
     let item: AdminAccount
     @ObservedObject var vm: AccountsViewModel
     @State private var confirmDelete = false
+    @State private var editAPIKey = ""
+    @State private var editBaseURL = ""
+    @State private var showAPIKey = false
+    @State private var didPrefillCredentials = false
 
     private var account: AdminAccount {
         vm.selected?.id == item.id ? (vm.selected ?? item) : item
@@ -224,6 +228,74 @@ struct AccountDetailView: View {
             if let err = account.error_message, !err.isEmpty {
                 Section("错误信息") {
                     Text(err).foregroundStyle(.red)
+                }
+            }
+
+            if account.supportsCredentialEdit {
+                Section {
+                    HStack {
+                        Text("密钥状态")
+                        Spacer()
+                        StatusBadge(
+                            text: account.hasStoredAPIKey ? "已配置" : "未配置",
+                            tone: account.hasStoredAPIKey ? .success : .warning
+                        )
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Base URL").font(.caption).foregroundStyle(.secondary)
+                        TextField("https://api.example.com", text: $editBaseURL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                            .font(.body.monospaced())
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("API Key").font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Button(showAPIKey ? "隐藏" : "显示") {
+                                showAPIKey.toggle()
+                            }
+                            .font(.caption)
+                            .buttonStyle(.plain)
+                        }
+                        Group {
+                            if showAPIKey {
+                                TextField(account.hasStoredAPIKey ? "留空则不修改已有密钥" : "请输入 API Key", text: $editAPIKey)
+                            } else {
+                                SecureField(account.hasStoredAPIKey ? "留空则不修改已有密钥" : "请输入 API Key", text: $editAPIKey)
+                            }
+                        }
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(.body.monospaced())
+                    }
+
+                    Button {
+                        Task {
+                            let ok = await vm.updateCredentials(
+                                id: account.id,
+                                apiKey: editAPIKey,
+                                baseURL: editBaseURL,
+                                hasExistingAPIKey: account.hasStoredAPIKey
+                            )
+                            if ok {
+                                editAPIKey = ""
+                                showAPIKey = false
+                                // refresh base url from server response
+                                editBaseURL = vm.selected?.currentBaseURL ?? editBaseURL
+                            }
+                        }
+                    } label: {
+                        Label("保存凭证", systemImage: "key.fill")
+                    }
+                    .disabled(vm.isActing)
+                } header: {
+                    Text("凭证设置")
+                } footer: {
+                    Text("API Key 因安全原因不会回显。填写新密钥可覆盖旧值；留空则保留原密钥。")
                 }
             }
 
@@ -295,6 +367,15 @@ struct AccountDetailView: View {
         }
         .task {
             await vm.select(item)
+            if !didPrefillCredentials {
+                editBaseURL = (vm.selected ?? item).currentBaseURL
+                didPrefillCredentials = true
+            }
+        }
+        .onChange(of: vm.selected?.id) { _ in
+            if let selected = vm.selected, selected.id == item.id, editAPIKey.isEmpty {
+                editBaseURL = selected.currentBaseURL
+            }
         }
         .confirmationDialog("确认删除该账号？此操作不可恢复。", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("删除", role: .destructive) {

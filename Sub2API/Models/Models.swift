@@ -553,6 +553,15 @@ struct AdminAccountGroup: Codable, Identifiable, Hashable {
     var platform: String?
 }
 
+struct AdminAccountCredentials: Codable, Hashable {
+    var base_url: String?
+    var api_key: String?
+}
+
+struct AdminAccountCredentialsStatus: Codable, Hashable {
+    var has_api_key: Bool?
+}
+
 struct AdminAccount: Codable, Identifiable, Hashable {
     let id: Int
     var name: String
@@ -580,11 +589,43 @@ struct AdminAccount: Codable, Identifiable, Hashable {
     var session_window_status: String?
     var group_ids: [Int]?
     var groups: [AdminAccountGroup]?
+    var credentials: AdminAccountCredentials?
+    var credentials_status: AdminAccountCredentialsStatus?
 
     var platformLabel: String { (platform ?? "-").uppercased() }
     var groupNames: String {
         let names = (groups ?? []).compactMap { $0.name }.filter { !$0.isEmpty }
         return names.isEmpty ? "-" : names.joined(separator: ", ")
+    }
+
+    var supportsCredentialEdit: Bool {
+        let t = (type ?? "").lowercased()
+        return t == "apikey" || t == "upstream"
+    }
+
+    var hasStoredAPIKey: Bool {
+        if let flag = credentials_status?.has_api_key { return flag }
+        if let key = credentials?.api_key, !key.isEmpty { return true }
+        return false
+    }
+
+    var currentBaseURL: String {
+        credentials?.base_url ?? ""
+    }
+}
+
+struct AdminAccountCredentialsUpdate: Encodable {
+    var api_key: String? = nil
+    var base_url: String? = nil
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(api_key, forKey: .api_key)
+        try c.encodeIfPresent(base_url, forKey: .base_url)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case api_key, base_url
     }
 }
 
@@ -594,6 +635,7 @@ struct UpdateAdminAccountRequest: Encodable {
     var notes: String? = nil
     var concurrency: Int? = nil
     var priority: Int? = nil
+    var credentials: AdminAccountCredentialsUpdate? = nil
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -602,10 +644,11 @@ struct UpdateAdminAccountRequest: Encodable {
         try c.encodeIfPresent(notes, forKey: .notes)
         try c.encodeIfPresent(concurrency, forKey: .concurrency)
         try c.encodeIfPresent(priority, forKey: .priority)
+        try c.encodeIfPresent(credentials, forKey: .credentials)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case status, name, notes, concurrency, priority
+        case status, name, notes, concurrency, priority, credentials
     }
 }
 
