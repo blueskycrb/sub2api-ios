@@ -79,7 +79,7 @@ actor APIClient {
         auth: Bool,
         retrying: Bool = false
     ) async throws -> T {
-        let url = try buildURL(path: path, query: query, method: method)
+        let url = try await buildURL(path: path, query: query, method: method)
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -208,7 +208,7 @@ actor APIClient {
         }
     }
 
-    private func buildURL(path: String, query: [String: Any?], method: String) throws -> URL {
+    private func buildURL(path: String, query: [String: Any?], method: String) async throws -> URL {
         let base = await MainActor.run { AppSession.shared.apiBaseURLString }
         guard var components = URLComponents(string: base + normalize(path: path)) else {
             throw APIError.invalidServerURL

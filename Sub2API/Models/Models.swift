@@ -100,7 +100,7 @@ struct PublicSettings: Codable {
     var channel_monitor_enabled: Bool?
 }
 
-struct Group: Codable, Identifiable, Hashable {
+struct APIGroup: Codable, Identifiable, Hashable {
     let id: Int
     var name: String
     var description: String?
@@ -127,7 +127,7 @@ struct ApiKey: Codable, Identifiable, Hashable {
     var created_at: String?
     var updated_at: String?
     var current_concurrency: Int?
-    var group: Group?
+    var group: APIGroup?
     var rate_limit_5h: Double?
     var rate_limit_1d: Double?
     var rate_limit_7d: Double?
@@ -243,7 +243,7 @@ struct UserSubscription: Codable, Identifiable, Hashable {
     var expires_at: String?
     var created_at: String?
     var updated_at: String?
-    var group: Group?
+    var group: APIGroup?
 }
 
 struct ProgressBucket: Codable, Hashable {
@@ -297,7 +297,7 @@ struct RedeemHistoryItem: Codable, Identifiable, Hashable {
     var notes: String?
     var group_id: Int?
     var validity_days: Int?
-    var group: Group?
+    var group: APIGroup?
 }
 
 struct UserAffiliateDetail: Codable {

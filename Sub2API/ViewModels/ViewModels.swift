@@ -185,7 +185,7 @@ final class DashboardViewModel: ObservableObject {
 @MainActor
 final class KeysViewModel: ObservableObject {
     @Published var items: [ApiKey] = []
-    @Published var groups: [Group] = []
+    @Published var groups: [APIGroup] = []
     @Published var search = ""
     @Published var isLoading = false
     @Published var errorMessage: String?

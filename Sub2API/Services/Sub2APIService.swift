@@ -101,7 +101,7 @@ enum Sub2APIService {
         try await APIClient.shared.delete("/keys/\(id)")
     }
 
-    static func availableGroups() async throws -> [Group] {
+    static func availableGroups() async throws -> [APIGroup] {
         try await APIClient.shared.get("/groups/available")
     }
 
