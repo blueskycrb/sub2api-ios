@@ -19,6 +19,16 @@
 - 购买订阅 / 订单（当服务端 `payment_enabled=true`）
 - 自定义服务器地址
 
+## 手机安装（TrollStore）
+
+1. 打开 [Actions](https://github.com/blueskycrb/sub2api-ios/actions)
+2. 进入最新成功的 `iOS Build`
+3. 下载 artifact：`sub2api-ios-trollstore-ipa`
+4. 解压得到 `Sub2API.ipa`
+5. 传到 iPhone，打开 **TrollStore → Install**
+
+这是 **真机 arm64 unsigned IPA**，专给 TrollStore 安装。普通未越狱设备不能直接装这个包。
+
 ## 本地打开
 
 1. 用 Mac + Xcode 15+ 打开：
@@ -44,6 +54,7 @@ open Sub2API.xcodeproj
 1. `macos-14` runner
 2. `xcodebuild` 编译 iOS Simulator
 3. 上传 `Sub2API.app` artifact
+4. 额外构建并上传 `sub2api-ios-trollstore-ipa`
 
 ### 可选：签名 IPA
 
@@ -74,5 +85,5 @@ open Sub2API.xcodeproj
 
 ## 说明
 
-- 当前版本完整覆盖 **用户中心**；网页管理后台（账号池、运维监控、系统设置等）仍建议用桌面浏览器。
+- 当前版本完整覆盖 **用户中心**；网页管理后台（账号池、运维监控、系统设置等）仍建议用网页浏览器。
 - 本项目可直接推到你自己的 GitHub 仓库启用 CI。

@@ -26,7 +26,7 @@
 - iOS 16+ / SwiftUI / async-await
 - `URLSession` REST 客户端，对接 `/api/v1`
 - Keychain 保存 access / refresh token
-- GitHub Actions (`macos-14`) 模拟器编译
+- GitHub Actions (`macos-14`) 构建模拟器包与 TrollStore IPA
 
 ## 本地运行
 
@@ -46,9 +46,20 @@
 1. 检出代码
 2. 使用 Xcode 选择最新稳定版
 3. `xcodebuild` 构建 iPhone 模拟器
-4. 上传 build 产物
+4. 额外构建 **真机 unsigned IPA**（TrollStore 可装）
+5. 上传 build 产物
 
-如需真机签名 IPA，在仓库 Secrets 中配置：
+### 下载 TrollStore IPA（手机直接装）
+
+1. 打开仓库 Actions
+2. 进入最新成功的 `iOS Build`
+3. 下载 `sub2api-ios-trollstore-ipa`
+4. 解压得到 `Sub2API.ipa`
+5. 传到 iPhone，用 **TrollStore → Install** 安装
+
+### 可选：正式签名 IPA
+
+在仓库 Secrets 中配置：
 
 - `IOS_CERTIFICATE_BASE64`
 - `IOS_CERTIFICATE_PASSWORD`
@@ -56,7 +67,7 @@
 - `IOS_TEAM_ID`
 - `IOS_BUNDLE_ID`（默认 `org.sub2api.app`）
 
-然后手动触发 workflow，并将输入 `sign` 设为 `true`。
+然后手动触发 workflow，并把输入 `sign` 设为 `true`。
 
 ## API 约定
 
