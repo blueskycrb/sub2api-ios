@@ -29,7 +29,7 @@
 		A00000000000000000000039 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000040 /* ProfileView.swift */; };
 		A00000000000000000000041 /* PaymentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000042 /* PaymentView.swift */; };
 		A00000000000000000000046 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000044 /* Assets.xcassets */; };
-		A00000000000000000000047 /* AccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000048 /* AccountsView.swift */; };
+		A00000000000000000000090 /* AccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000091 /* AccountsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -57,7 +57,7 @@
 		A00000000000000000000043 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A00000000000000000000044 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A00000000000000000000045 /* Sub2API.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sub2API.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A00000000000000000000048 /* AccountsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsView.swift; sourceTree = "<group>"; };
+		A00000000000000000000091 /* AccountsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -153,7 +153,7 @@
 				A00000000000000000000064 /* Monitor */,
 				A00000000000000000000065 /* Profile */,
 				A00000000000000000000066 /* Payment */,
-				A00000000000000000000049 /* Accounts */,
+				A00000000000000000000092 /* Accounts */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -262,10 +262,10 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
-		A00000000000000000000049 /* Accounts */ = {
+		A00000000000000000000092 /* Accounts */ = {
 			isa = PBXGroup;
 			children = (
-				A00000000000000000000048 /* AccountsView.swift */,
+				A00000000000000000000091 /* AccountsView.swift */,
 			);
 			path = Accounts;
 			sourceTree = "<group>";
@@ -361,7 +361,7 @@
 				A00000000000000000000037 /* MonitorView.swift in Sources */,
 				A00000000000000000000039 /* ProfileView.swift in Sources */,
 				A00000000000000000000041 /* PaymentView.swift in Sources */,
-				A00000000000000000000047 /* AccountsView.swift in Sources */,
+				A00000000000000000000090 /* AccountsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
