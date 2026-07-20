@@ -15,6 +15,9 @@ on:
         required: false
         default: "true"
 
+permissions:
+  contents: write
+
 jobs:
   build-simulator:
     name: Build iOS Simulator
@@ -124,8 +127,8 @@ jobs:
           file "$BINARY"
           lipo -info "$BINARY" || true
 
-          rm -rf build/Payload build/Sub2API.ipa
-          mkdir -p build/Payload
+          rm -rf build/Payload build/Sub2API.ipa build/dist
+          mkdir -p build/Payload build/dist
           cp -R "$APP_PATH" build/Payload/
 
           # Strip any residual signature so TrollStore can install cleanly.
@@ -138,18 +141,47 @@ jobs:
 
           (
             cd build
+            # IPA is a zip container with Payload/*.app; keep .ipa extension for TrollStore.
             zip -qry Sub2API.ipa Payload
           )
 
-          ls -lh build/Sub2API.ipa
+          # Copy with a stable name into dist/ for artifact + release upload.
+          cp -f build/Sub2API.ipa build/dist/Sub2API.ipa
+
+          ls -lh build/Sub2API.ipa build/dist/Sub2API.ipa
+          file build/Sub2API.ipa
           unzip -l build/Sub2API.ipa | head -n 40
 
-      - name: Upload TrollStore IPA
+          # Sanity: file must be named .ipa and contain Payload/Sub2API.app
+          test -f build/dist/Sub2API.ipa
+          unzip -l build/dist/Sub2API.ipa | grep -q 'Payload/Sub2API.app'
+
+      - name: Upload TrollStore IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sub2api-ios-trollstore-ipa
-          path: build/Sub2API.ipa
+          # Artifact zip from GitHub UI still wraps files; inside it is Sub2API.ipa
+          name: Sub2API.ipa
+          path: build/dist/Sub2API.ipa
           if-no-files-found: error
+          compression-level: 0
+
+      - name: Publish direct IPA release asset
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: trollstore-latest
+          name: Sub2API TrollStore IPA
+          body: |
+            可直接用 TrollStore 安装的 unsigned arm64 IPA。
+
+            - 文件名：`Sub2API.ipa`（点此 Assets 下载，后缀就是 `.ipa`）
+            - 结构：`Payload/Sub2API.app`
+            - 构建提交：`${{ github.sha }}`
+          files: build/dist/Sub2API.ipa
+          fail_on_unmatched_files: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   signed-ipa:
     name: Signed IPA
