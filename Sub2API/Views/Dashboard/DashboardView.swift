@@ -6,6 +6,17 @@ struct DashboardView: View {
 
     private let columns = [GridItem(.flexible()), GridItem(.flexible())]
 
+    private let modelColors: [Color] = [
+        Color(red: 0.231, green: 0.510, blue: 0.965), // #3b82f6
+        Color(red: 0.063, green: 0.725, blue: 0.506), // #10b981
+        Color(red: 0.961, green: 0.620, blue: 0.043), // #f59e0b
+        Color(red: 0.937, green: 0.267, blue: 0.267), // #ef4444
+        Color(red: 0.545, green: 0.361, blue: 0.965), // #8b5cf6
+        Color(red: 0.925, green: 0.286, blue: 0.600), // #ec4899
+        Color(red: 0.024, green: 0.714, blue: 0.831), // #06b6d4
+        Color(red: 0.518, green: 0.757, blue: 0.086)  // #84cc16
+    ]
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -64,56 +75,99 @@ struct DashboardView: View {
                     }
                 }
 
-                if let summary = vm.summary {
-                    SectionCard(title: "订阅摘要", systemImage: "rectangle.stack.fill") {
-                        Text("活跃订阅：\(summary.active_count ?? 0)")
-                            .font(.subheadline)
-                        if let items = summary.subscriptions, !items.isEmpty {
-                            ForEach(items) { item in
-                                HStack {
-                                    VStack(alignment: .leading) {
-                                        Text(item.group_name ?? "订阅 #\(item.id)").font(.subheadline.weight(.semibold))
-                                        Text("到期：\(DateText.display(item.expires_at))")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    StatusBadge(text: item.status ?? "-", tone: StatusTone.forStatus(item.status))
-                                }
-                                .padding(.vertical, 4)
-                            }
-                        } else {
-                            Text("暂无订阅").foregroundStyle(.secondary).font(.subheadline)
-                        }
+                SectionCard(title: "模型分布", systemImage: "chart.pie.fill") {
+                    if !vm.modelRangeStart.isEmpty {
+                        Text("\(vm.modelRangeStart) ~ \(vm.modelRangeEnd)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                }
 
-                SectionCard(title: "公告", systemImage: "megaphone.fill") {
-                    if vm.announcements.isEmpty {
-                        Text("暂无公告").foregroundStyle(.secondary)
+                    if vm.models.isEmpty {
+                        Text("暂无模型用量数据")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
                     } else {
-                        ForEach(vm.announcements.prefix(5)) { item in
+                        HStack(alignment: .center, spacing: 16) {
+                            ModelDonutChart(models: vm.models, colors: modelColors)
+                                .frame(width: 140, height: 140)
+
                             VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text(item.title).font(.subheadline.weight(.semibold))
-                                    Spacer()
-                                    if item.isUnread {
-                                        StatusBadge(text: "未读", tone: .warning)
+                                ForEach(Array(vm.models.prefix(6).enumerated()), id: \.element.id) { index, item in
+                                    HStack(spacing: 6) {
+                                        Circle()
+                                            .fill(modelColors[index % modelColors.count])
+                                            .frame(width: 8, height: 8)
+                                        Text(item.model)
+                                            .font(.caption2.weight(.medium))
+                                            .lineLimit(1)
                                     }
                                 }
-                                Text(item.content)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(4)
-                                if item.isUnread {
-                                    Button("标记已读") {
-                                        Task { await vm.markRead(item) }
-                                    }
-                                    .font(.caption.weight(.semibold))
+                                if vm.models.count > 6 {
+                                    Text("+\(vm.models.count - 6) 个模型")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
                                 }
                             }
-                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        VStack(spacing: 0) {
+                            HStack {
+                                Text("模型").frame(maxWidth: .infinity, alignment: .leading)
+                                Text("请求").frame(width: 48, alignment: .trailing)
+                                Text("Token").frame(width: 52, alignment: .trailing)
+                                Text("实际").frame(width: 58, alignment: .trailing)
+                                Text("标准").frame(width: 58, alignment: .trailing)
+                            }
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 8)
+
                             Divider()
+
+                            ForEach(Array(vm.models.enumerated()), id: \.element.id) { index, item in
+                                HStack(alignment: .center, spacing: 4) {
+                                    HStack(spacing: 6) {
+                                        Circle()
+                                            .fill(modelColors[index % modelColors.count])
+                                            .frame(width: 7, height: 7)
+                                        Text(item.model)
+                                            .font(.caption.weight(.medium))
+                                            .lineLimit(1)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                    Text((item.requests ?? 0).compactText)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 48, alignment: .trailing)
+
+                                    Text((item.total_tokens ?? 0).compactText)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 52, alignment: .trailing)
+
+                                    Text((item.actual_cost ?? 0).compactCurrencyText)
+                                        .font(.caption2)
+                                        .foregroundStyle(.green)
+                                        .frame(width: 58, alignment: .trailing)
+                                        .minimumScaleFactor(0.7)
+                                        .lineLimit(1)
+
+                                    Text((item.cost ?? 0).compactCurrencyText)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 58, alignment: .trailing)
+                                        .minimumScaleFactor(0.7)
+                                        .lineLimit(1)
+                                }
+                                .padding(.vertical, 8)
+
+                                if index < vm.models.count - 1 {
+                                    Divider()
+                                }
+                            }
                         }
                     }
                 }
@@ -133,5 +187,55 @@ struct DashboardView: View {
         .overlay { if vm.isLoading && vm.stats == nil { LoadingView() } }
         .task { await vm.load() }
         .refreshable { await vm.load() }
+    }
+}
+
+struct ModelDonutChart: View {
+    let models: [ModelStat]
+    let colors: [Color]
+    var lineWidth: CGFloat = 22
+
+    private var values: [Double] {
+        models.map { Double($0.total_tokens ?? 0) }
+    }
+
+    private var total: Double {
+        max(values.reduce(0, +), 1)
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.primary.opacity(0.06), lineWidth: lineWidth)
+
+            Canvas { context, size in
+                let rect = CGRect(origin: .zero, size: size).insetBy(dx: lineWidth / 2, dy: lineWidth / 2)
+                var start = Angle.degrees(-90)
+                for (index, value) in values.enumerated() {
+                    guard value > 0 else { continue }
+                    let delta = Angle.degrees(360 * value / total)
+                    var path = Path()
+                    path.addArc(center: CGPoint(x: size.width / 2, y: size.height / 2),
+                                radius: min(rect.width, rect.height) / 2,
+                                startAngle: start,
+                                endAngle: start + delta,
+                                clockwise: false)
+                    context.stroke(
+                        path,
+                        with: .color(colors[index % colors.count]),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt)
+                    )
+                    start += delta
+                }
+            }
+
+            VStack(spacing: 2) {
+                Text("\(models.count)")
+                    .font(.title3.bold())
+                Text("模型")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }

@@ -149,38 +149,45 @@ final class AuthViewModel: ObservableObject {
 final class DashboardViewModel: ObservableObject {
     @Published var stats: UserDashboardStats?
     @Published var adminStats: AdminDashboardStats?
-    @Published var announcements: [UserAnnouncement] = []
-    @Published var summary: SubscriptionSummary?
+    @Published var models: [ModelStat] = []
+    @Published var modelRangeStart: String = ""
+    @Published var modelRangeEnd: String = ""
     @Published var isLoading = false
     @Published var errorMessage: String?
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 
     func load() async {
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil
+
+        let end = Date()
+        let start = Calendar.current.date(byAdding: .day, value: -6, to: end) ?? end
+        modelRangeStart = Self.dayFormatter.string(from: start)
+        modelRangeEnd = Self.dayFormatter.string(from: end)
+
         do {
             async let statsTask = Sub2APIService.dashboardStats()
-            async let annTask = Sub2APIService.announcements()
-            async let summaryTask = Sub2APIService.subscriptionSummary()
+            async let modelsTask = Sub2APIService.dashboardModels(
+                startDate: modelRangeStart,
+                endDate: modelRangeEnd
+            )
             stats = try await statsTask
-            announcements = try await annTask
-            summary = try? await summaryTask
+            let modelResp = try? await modelsTask
+            models = modelResp?.models ?? []
             try? await AppSession.shared.refreshCurrentUser()
             if AppSession.shared.user?.isAdmin == true {
                 adminStats = try? await Sub2APIService.adminDashboardStats()
             } else {
                 adminStats = nil
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func markRead(_ item: UserAnnouncement) async {
-        do {
-            _ = try await Sub2APIService.markAnnouncementRead(id: item.id)
-            if let idx = announcements.firstIndex(where: { $0.id == item.id }) {
-                announcements[idx].read_at = ISO8601DateFormatter().string(from: Date())
             }
         } catch {
             errorMessage = error.localizedDescription

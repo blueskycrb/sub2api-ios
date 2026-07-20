@@ -68,6 +68,13 @@ enum Sub2APIService {
         try await APIClient.shared.get("/usage/dashboard/stats")
     }
 
+    static func dashboardModels(startDate: String, endDate: String) async throws -> ModelStatsResponse {
+        try await APIClient.shared.get("/usage/dashboard/models", query: [
+            "start_date": startDate,
+            "end_date": endDate
+        ])
+    }
+
     static func adminDashboardStats() async throws -> AdminDashboardStats {
         try await APIClient.shared.get("/admin/dashboard/stats")
     }

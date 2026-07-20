@@ -233,6 +233,27 @@ struct UsageStatsResponse: Codable {
     var today_actual_cost: Double?
 }
 
+struct ModelStat: Codable, Identifiable, Hashable {
+    var model: String
+    var requests: Int?
+    var input_tokens: Int?
+    var output_tokens: Int?
+    var cache_creation_tokens: Int?
+    var cache_read_tokens: Int?
+    var total_tokens: Int?
+    var cost: Double?
+    var actual_cost: Double?
+    var account_cost: Double?
+
+    var id: String { model }
+}
+
+struct ModelStatsResponse: Codable {
+    var models: [ModelStat]?
+    var start_date: String?
+    var end_date: String?
+}
+
 struct UserAnnouncement: Codable, Identifiable, Hashable {
     let id: Int
     var title: String
