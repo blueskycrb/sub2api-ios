@@ -206,6 +206,22 @@ struct UserDashboardStats: Codable {
     var tpm: Double?
 }
 
+struct AdminDashboardStats: Codable {
+    var total_users: Int?
+    var active_users: Int?
+    var total_api_keys: Int?
+    var active_api_keys: Int?
+    var total_accounts: Int?
+    var normal_accounts: Int?
+    var error_accounts: Int?
+    var total_requests: Int?
+    var today_requests: Int?
+    var total_cost: Double?
+    var today_cost: Double?
+    var total_actual_cost: Double?
+    var today_actual_cost: Double?
+}
+
 struct UsageStatsResponse: Codable {
     var total_requests: Int?
     var total_tokens: Int?

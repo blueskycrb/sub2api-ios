@@ -148,6 +148,7 @@ final class AuthViewModel: ObservableObject {
 @MainActor
 final class DashboardViewModel: ObservableObject {
     @Published var stats: UserDashboardStats?
+    @Published var adminStats: AdminDashboardStats?
     @Published var announcements: [UserAnnouncement] = []
     @Published var summary: SubscriptionSummary?
     @Published var isLoading = false
@@ -165,6 +166,11 @@ final class DashboardViewModel: ObservableObject {
             announcements = try await annTask
             summary = try? await summaryTask
             try? await AppSession.shared.refreshCurrentUser()
+            if AppSession.shared.user?.isAdmin == true {
+                adminStats = try? await Sub2APIService.adminDashboardStats()
+            } else {
+                adminStats = nil
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

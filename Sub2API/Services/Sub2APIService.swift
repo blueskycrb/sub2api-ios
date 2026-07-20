@@ -68,6 +68,10 @@ enum Sub2APIService {
         try await APIClient.shared.get("/usage/dashboard/stats")
     }
 
+    static func adminDashboardStats() async throws -> AdminDashboardStats {
+        try await APIClient.shared.get("/admin/dashboard/stats")
+    }
+
     static func usageLogs(page: Int = 1, pageSize: Int = 20, apiKeyId: Int? = nil) async throws -> PaginatedResponse<UsageLog> {
         try await APIClient.shared.get("/usage", query: [
             "page": page,

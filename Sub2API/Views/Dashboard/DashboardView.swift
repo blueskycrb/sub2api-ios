@@ -16,7 +16,7 @@ struct DashboardView: View {
                 }
 
                 if let user = session.user {
-                    SectionCard(title: "账户概览", systemImage: "person.crop.circle") {
+                    SectionCard(title: "????", systemImage: "person.crop.circle.fill") {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(user.username).font(.title3.bold())
@@ -26,11 +26,25 @@ struct DashboardView: View {
                             StatusBadge(text: user.role, tone: user.isAdmin ? .warning : .success)
                         }
                         LazyVGrid(columns: columns, spacing: 12) {
-                            StatCard("余额", value: user.balance.compactCurrencyText, systemImage: "dollarsign.circle")
-                            StatCard("并发", value: "\(user.concurrency)", systemImage: "bolt.horizontal.circle")
+                            StatCard("??", value: user.balance.compactCurrencyText, systemImage: "dollarsign.circle.fill")
+                            StatCard("??", value: "\(user.concurrency)", systemImage: "bolt.fill")
+                            if let admin = vm.adminStats {
+                                StatCard(
+                                    "??",
+                                    value: "\(admin.total_accounts ?? 0)",
+                                    subtitle: "\(admin.normal_accounts ?? 0) ??",
+                                    systemImage: "person.2.fill"
+                                )
+                                StatCard(
+                                    "??",
+                                    value: "\(admin.total_users ?? 0)",
+                                    subtitle: "\(admin.active_users ?? 0) ??",
+                                    systemImage: "person.crop.circle.badge.checkmark"
+                                )
+                            }
                         }
                         if user.isAdmin {
-                            Text("当前账号具备管理员权限。iOS 客户端优先覆盖用户中心功能，管理后台请使用网页端。")
+                            Text("???????????????????????")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -38,28 +52,28 @@ struct DashboardView: View {
                 }
 
                 if let stats = vm.stats {
-                    SectionCard(title: "用量统计", systemImage: "chart.line.uptrend.xyaxis") {
+                    SectionCard(title: "????", systemImage: "chart.bar.fill") {
                         LazyVGrid(columns: columns, spacing: 12) {
-                            StatCard("今日请求", value: (stats.today_requests ?? 0).compactText, systemImage: "arrow.triangle.2.circlepath")
-                            StatCard("今日费用", value: (stats.today_actual_cost ?? stats.today_cost ?? 0).compactCurrencyText, systemImage: "yensign.circle")
-                            StatCard("累计请求", value: (stats.total_requests ?? 0).compactText, systemImage: "sum")
-                            StatCard("累计费用", value: (stats.total_actual_cost ?? stats.total_cost ?? 0).compactCurrencyText, systemImage: "creditcard")
-                            StatCard("API 密钥", value: "\(stats.active_api_keys ?? 0)/\(stats.total_api_keys ?? 0)", subtitle: "活跃/全部", systemImage: "key")
+                            StatCard("????", value: (stats.today_requests ?? 0).compactText, systemImage: "arrow.triangle.2.circlepath")
+                            StatCard("????", value: (stats.today_actual_cost ?? stats.today_cost ?? 0).compactCurrencyText, systemImage: "yensign.circle.fill")
+                            StatCard("????", value: (stats.total_requests ?? 0).compactText, systemImage: "sum")
+                            StatCard("????", value: (stats.total_actual_cost ?? stats.total_cost ?? 0).compactCurrencyText, systemImage: "creditcard.fill")
+                            StatCard("API ??", value: "\(stats.active_api_keys ?? 0)/\(stats.total_api_keys ?? 0)", subtitle: "??/??", systemImage: "key.fill")
                             StatCard("RPM / TPM", value: String(format: "%.1f / %.0f", stats.rpm ?? 0, stats.tpm ?? 0), systemImage: "speedometer")
                         }
                     }
                 }
 
                 if let summary = vm.summary {
-                    SectionCard(title: "订阅摘要", systemImage: "rectangle.stack") {
-                        Text("活跃订阅：\(summary.active_count ?? 0)")
+                    SectionCard(title: "????", systemImage: "rectangle.stack.fill") {
+                        Text("?????\(summary.active_count ?? 0)")
                             .font(.subheadline)
                         if let items = summary.subscriptions, !items.isEmpty {
                             ForEach(items) { item in
                                 HStack {
                                     VStack(alignment: .leading) {
-                                        Text(item.group_name ?? "订阅 #\(item.id)").font(.subheadline.weight(.semibold))
-                                        Text("到期：\(DateText.display(item.expires_at))")
+                                        Text(item.group_name ?? "?? #\(item.id)").font(.subheadline.weight(.semibold))
+                                        Text("???\(DateText.display(item.expires_at))")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
@@ -69,14 +83,14 @@ struct DashboardView: View {
                                 .padding(.vertical, 4)
                             }
                         } else {
-                            Text("暂无订阅").foregroundStyle(.secondary).font(.subheadline)
+                            Text("????").foregroundStyle(.secondary).font(.subheadline)
                         }
                     }
                 }
 
-                SectionCard(title: "公告", systemImage: "megaphone.fill") {
+                SectionCard(title: "??", systemImage: "megaphone.fill") {
                     if vm.announcements.isEmpty {
-                        Text("暂无公告").foregroundStyle(.secondary)
+                        Text("????").foregroundStyle(.secondary)
                     } else {
                         ForEach(vm.announcements.prefix(5)) { item in
                             VStack(alignment: .leading, spacing: 6) {
@@ -84,7 +98,7 @@ struct DashboardView: View {
                                     Text(item.title).font(.subheadline.weight(.semibold))
                                     Spacer()
                                     if item.isUnread {
-                                        StatusBadge(text: "未读", tone: .warning)
+                                        StatusBadge(text: "??", tone: .warning)
                                     }
                                 }
                                 Text(item.content)
@@ -92,7 +106,7 @@ struct DashboardView: View {
                                     .foregroundStyle(.secondary)
                                     .lineLimit(4)
                                 if item.isUnread {
-                                    Button("标记已读") {
+                                    Button("????") {
                                         Task { await vm.markRead(item) }
                                     }
                                     .font(.caption.weight(.semibold))
@@ -106,7 +120,7 @@ struct DashboardView: View {
             }
             .padding(16)
         }
-        .navigationTitle("仪表盘")
+        .navigationTitle("???")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

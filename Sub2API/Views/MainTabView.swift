@@ -7,7 +7,7 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $tab) {
             NavigationStack { DashboardView() }
-                .tabItem { Label("仪表盘", systemImage: "gauge.with.dots.needle.67percent") }
+                .tabItem { Label("仪表盘", systemImage: "chart.bar.fill") }
                 .tag(0)
 
             NavigationStack { KeysView() }

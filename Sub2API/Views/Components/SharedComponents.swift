@@ -20,7 +20,11 @@ struct StatCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Image(systemName: systemImage)
-                    .foregroundStyle(accent)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background(accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 Spacer()
             }
             Text(value)

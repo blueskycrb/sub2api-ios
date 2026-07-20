@@ -11,11 +11,13 @@ struct LoginView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     header
 
-                    SectionCard(title: "服务器", systemImage: "server.rack") {
+                    SectionCard(title: "服务器", systemImage: "externaldrive.connected.to.line.below") {
                         TextField("https://your-sub2api.example.com", text: $vm.serverURL)
                             .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
                             .autocorrectionDisabled()
+                            .textContentType(.URL)
+                            .keyboardType(.default)
+                            .submitLabel(.done)
                             .padding(12)
                             .background(Color(.tertiarySystemBackground))
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -71,8 +73,8 @@ struct LoginView: View {
     }
 
     private var loginCard: some View {
-        SectionCard(title: "登录", systemImage: "person.badge.key.fill") {
-            field("邮箱", text: $vm.email, keyboard: .emailAddress)
+        SectionCard(title: "登录", systemImage: "person.fill") {
+            field("邮箱", text: $vm.email, contentType: .emailAddress)
             secure("密码", text: $vm.password)
 
             Button {
@@ -100,7 +102,7 @@ struct LoginView: View {
 
     private var registerCard: some View {
         SectionCard(title: "注册", systemImage: "person.crop.circle.badge.plus") {
-            field("邮箱", text: $vm.email, keyboard: .emailAddress)
+            field("邮箱", text: $vm.email, contentType: .emailAddress)
             secure("密码", text: $vm.password)
             secure("确认密码", text: $vm.confirmPassword)
 
@@ -138,7 +140,7 @@ struct LoginView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            field("6 位验证码", text: $vm.totpCode, keyboard: .numberPad)
+            field("6 位验证码", text: $vm.totpCode, keyboard: .numberPad, contentType: .oneTimeCode)
             Button {
                 Task { await vm.submit2FA() }
             } label: {
@@ -153,13 +155,20 @@ struct LoginView: View {
         }
     }
 
-    private func field(_ title: String, text: Binding<String>, keyboard: UIKeyboardType = .default) -> some View {
+    private func field(
+        _ title: String,
+        text: Binding<String>,
+        keyboard: UIKeyboardType = .default,
+        contentType: UITextContentType? = nil
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.caption).foregroundStyle(.secondary)
             TextField(title, text: text)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(keyboard)
+                .textContentType(contentType)
+                .submitLabel(.next)
                 .padding(12)
                 .background(Color(.tertiarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -170,6 +179,11 @@ struct LoginView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.caption).foregroundStyle(.secondary)
             SecureField(title, text: text)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .textContentType(.password)
+                .keyboardType(.default)
+                .submitLabel(.done)
                 .padding(12)
                 .background(Color(.tertiarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
