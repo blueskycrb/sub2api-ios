@@ -543,3 +543,74 @@ struct UserMonitorDetail: Codable, Identifiable, Hashable {
     var models: [UserMonitorModelDetail]?
 }
 
+
+
+// MARK: - Admin Accounts
+
+struct AdminAccountGroup: Codable, Identifiable, Hashable {
+    let id: Int
+    var name: String?
+    var platform: String?
+}
+
+struct AdminAccount: Codable, Identifiable, Hashable {
+    let id: Int
+    var name: String
+    var notes: String?
+    var platform: String?
+    var type: String?
+    var status: String?
+    var error_message: String?
+    var concurrency: Int?
+    var current_concurrency: Int?
+    var priority: Int?
+    var rate_multiplier: Double?
+    var load_factor: Double?
+    var proxy_id: Int?
+    var proxy_fallback_origin_name: String?
+    var schedulable: Bool?
+    var last_used_at: String?
+    var created_at: String?
+    var updated_at: String?
+    var rate_limited_at: String?
+    var rate_limit_reset_at: String?
+    var overload_until: String?
+    var temp_unschedulable_until: String?
+    var temp_unschedulable_reason: String?
+    var session_window_status: String?
+    var group_ids: [Int]?
+    var groups: [AdminAccountGroup]?
+
+    var platformLabel: String { (platform ?? "-").uppercased() }
+    var groupNames: String {
+        let names = (groups ?? []).compactMap { $0.name }.filter { !$0.isEmpty }
+        return names.isEmpty ? "-" : names.joined(separator: ", ")
+    }
+}
+
+struct UpdateAdminAccountRequest: Encodable {
+    var status: String? = nil
+    var name: String? = nil
+    var notes: String? = nil
+    var concurrency: Int? = nil
+    var priority: Int? = nil
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(status, forKey: .status)
+        try c.encodeIfPresent(name, forKey: .name)
+        try c.encodeIfPresent(notes, forKey: .notes)
+        try c.encodeIfPresent(concurrency, forKey: .concurrency)
+        try c.encodeIfPresent(priority, forKey: .priority)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status, name, notes, concurrency, priority
+    }
+}
+
+struct AccountTestResult: Codable {
+    var success: Bool?
+    var message: String?
+    var latency_ms: Double?
+}

@@ -588,3 +588,149 @@ final class MonitorViewModel: ObservableObject {
     }
 }
 
+
+
+@MainActor
+final class AccountsViewModel: ObservableObject {
+    @Published var items: [AdminAccount] = []
+    @Published var search = ""
+    @Published var statusFilter: String = "all"
+    @Published var platformFilter: String = "all"
+    @Published var isLoading = false
+    @Published var isActing = false
+    @Published var errorMessage: String?
+    @Published var successMessage: String?
+    @Published var selected: AdminAccount?
+    @Published var total = 0
+
+    var platforms: [String] {
+        let set = Set(items.compactMap { $0.platform }.filter { !$0.isEmpty })
+        return ["all"] + set.sorted()
+    }
+
+    func load() async {
+        isLoading = true
+        defer { isLoading = false }
+        errorMessage = nil
+        do {
+            let page = try await Sub2APIService.adminAccounts(
+                page: 1,
+                pageSize: 100,
+                platform: platformFilter == "all" ? nil : platformFilter,
+                status: statusFilter == "all" ? nil : statusFilter,
+                search: search.nilIfEmpty
+            )
+            items = page.items
+            total = page.total
+            if let selected, let refreshed = items.first(where: { $0.id == selected.id }) {
+                self.selected = refreshed
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func select(_ item: AdminAccount) async {
+        selected = item
+        do {
+            selected = try await Sub2APIService.adminAccount(id: item.id)
+        } catch {
+            // keep list item if detail fetch fails
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func replace(_ account: AdminAccount) {
+        if let idx = items.firstIndex(where: { $0.id == account.id }) {
+            items[idx] = account
+        }
+        if selected?.id == account.id {
+            selected = account
+        }
+    }
+
+    private func runAction(_ work: () async throws -> AdminAccount, success: String) async {
+        isActing = true
+        defer { isActing = false }
+        errorMessage = nil
+        successMessage = nil
+        do {
+            let account = try await work()
+            replace(account)
+            successMessage = success
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func toggleStatus(_ item: AdminAccount) async {
+        let next = (item.status == "active") ? "inactive" : "active"
+        await runAction({
+            try await Sub2APIService.setAdminAccountStatus(id: item.id, status: next)
+        }, success: next == "active" ? "已启用账号" : "已停用账号")
+    }
+
+    func test(_ item: AdminAccount) async {
+        isActing = true
+        defer { isActing = false }
+        errorMessage = nil
+        successMessage = nil
+        do {
+            let result = try await Sub2APIService.testAdminAccount(id: item.id)
+            if result.success == true {
+                let latency = result.latency_ms.map { String(format: "%.0fms" , $0) } ?? "-"
+                successMessage = "测试成功 · \(latency)"
+            } else {
+                errorMessage = result.message ?? "测试失败"
+            }
+            // refresh detail/list state after test
+            if let refreshed = try? await Sub2APIService.adminAccount(id: item.id) {
+                replace(refreshed)
+            } else {
+                await load()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func refreshCredentials(_ item: AdminAccount) async {
+        await runAction({
+            try await Sub2APIService.refreshAdminAccount(id: item.id)
+        }, success: "凭证已刷新")
+    }
+
+    func clearError(_ item: AdminAccount) async {
+        await runAction({
+            try await Sub2APIService.clearAdminAccountError(id: item.id)
+        }, success: "错误状态已清除")
+    }
+
+    func clearRateLimit(_ item: AdminAccount) async {
+        await runAction({
+            try await Sub2APIService.clearAdminAccountRateLimit(id: item.id)
+        }, success: "限流状态已清除")
+    }
+
+    func recover(_ item: AdminAccount) async {
+        await runAction({
+            try await Sub2APIService.recoverAdminAccount(id: item.id)
+        }, success: "运行状态已恢复")
+    }
+
+    func delete(_ item: AdminAccount) async {
+        isActing = true
+        defer { isActing = false }
+        errorMessage = nil
+        successMessage = nil
+        do {
+            _ = try await Sub2APIService.deleteAdminAccount(id: item.id)
+            items.removeAll { $0.id == item.id }
+            if selected?.id == item.id { selected = nil }
+            total = max(0, total - 1)
+            successMessage = "账号已删除"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}

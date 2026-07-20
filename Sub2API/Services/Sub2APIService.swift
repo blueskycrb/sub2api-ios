@@ -214,4 +214,63 @@ enum Sub2APIService {
     static func channelMonitorStatus(id: Int) async throws -> UserMonitorDetail {
         try await APIClient.shared.get("/channel-monitors/\(id)/status")
     }
+
+    // MARK: - Admin Accounts
+    static func adminAccounts(
+        page: Int = 1,
+        pageSize: Int = 50,
+        platform: String? = nil,
+        status: String? = nil,
+        search: String? = nil
+    ) async throws -> PaginatedResponse<AdminAccount> {
+        try await APIClient.shared.get("/admin/accounts", query: [
+            "page": page,
+            "page_size": pageSize,
+            "platform": platform,
+            "status": status,
+            "search": search,
+            "lite": "1"
+        ])
+    }
+
+    static func adminAccount(id: Int) async throws -> AdminAccount {
+        try await APIClient.shared.get("/admin/accounts/\(id)")
+    }
+
+    static func updateAdminAccount(id: Int, _ payload: UpdateAdminAccountRequest) async throws -> AdminAccount {
+        try await APIClient.shared.put("/admin/accounts/\(id)", body: payload)
+    }
+
+    static func setAdminAccountStatus(id: Int, status: String) async throws -> AdminAccount {
+        try await updateAdminAccount(id: id, UpdateAdminAccountRequest(status: status))
+    }
+
+    static func deleteAdminAccount(id: Int) async throws -> MessageResponse {
+        try await APIClient.shared.delete("/admin/accounts/\(id)")
+    }
+
+    static func testAdminAccount(id: Int) async throws -> AccountTestResult {
+        struct Body: Encodable {}
+        return try await APIClient.shared.post("/admin/accounts/\(id)/test", body: Body())
+    }
+
+    static func refreshAdminAccount(id: Int) async throws -> AdminAccount {
+        struct Body: Encodable {}
+        return try await APIClient.shared.post("/admin/accounts/\(id)/refresh", body: Body())
+    }
+
+    static func clearAdminAccountError(id: Int) async throws -> AdminAccount {
+        struct Body: Encodable {}
+        return try await APIClient.shared.post("/admin/accounts/\(id)/clear-error", body: Body())
+    }
+
+    static func clearAdminAccountRateLimit(id: Int) async throws -> AdminAccount {
+        struct Body: Encodable {}
+        return try await APIClient.shared.post("/admin/accounts/\(id)/clear-rate-limit", body: Body())
+    }
+
+    static func recoverAdminAccount(id: Int) async throws -> AdminAccount {
+        struct Body: Encodable {}
+        return try await APIClient.shared.post("/admin/accounts/\(id)/recover-state", body: Body())
+    }
 }

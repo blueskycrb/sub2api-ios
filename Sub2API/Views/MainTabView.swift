@@ -34,6 +34,16 @@ struct MoreView: View {
 
     var body: some View {
         List {
+            if session.user?.isAdmin == true {
+                Section("管理") {
+                    NavigationLink {
+                        AccountsView()
+                    } label: {
+                        Label("账号管理", systemImage: "person.2.circle.fill")
+                    }
+                }
+            }
+
             Section("账户") {
                 NavigationLink {
                     SubscriptionsView()
