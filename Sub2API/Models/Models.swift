@@ -657,3 +657,42 @@ struct AccountTestResult: Codable {
     var message: String?
     var latency_ms: Double?
 }
+
+struct AccountAvailableModel: Codable, Identifiable, Hashable {
+    var id: String
+    var type: String?
+    var object: String?
+    var display_name: String?
+    var created_at: String?
+
+    var label: String {
+        let name = (display_name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? id : name
+    }
+}
+
+struct AccountTestRequest: Encodable {
+    var model_id: String
+    var prompt: String = ""
+    var mode: String = "default"
+}
+
+struct AccountTestEvent: Decodable, Hashable {
+    var type: String
+    var text: String?
+    var model: String?
+    var success: Bool?
+    var error: String?
+    var image_url: String?
+    var mime_type: String?
+}
+
+struct AccountTestLogLine: Identifiable, Hashable {
+    let id = UUID()
+    var text: String
+    var tone: Tone
+
+    enum Tone: Hashable {
+        case info, success, warning, error, muted, content, accent
+    }
+}

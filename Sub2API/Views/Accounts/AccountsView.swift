@@ -187,6 +187,7 @@ struct AccountDetailView: View {
     @State private var editBaseURL = ""
     @State private var showAPIKey = false
     @State private var didPrefillCredentials = false
+    @State private var showConnectionTest = false
 
     private var account: AdminAccount {
         vm.selected?.id == item.id ? (vm.selected ?? item) : item
@@ -319,9 +320,9 @@ struct AccountDetailView: View {
                 }
 
                 Button {
-                    Task { await vm.test(account) }
+                    showConnectionTest = true
                 } label: {
-                    Label("连通性测试", systemImage: "bolt.horizontal.circle")
+                    Label("测试账号连接", systemImage: "bolt.horizontal.circle")
                 }
 
                 Button {
@@ -382,6 +383,245 @@ struct AccountDetailView: View {
                 Task { await vm.delete(account) }
             }
             Button("取消", role: .cancel) {}
+        }
+        .sheet(isPresented: $showConnectionTest) {
+            AccountConnectionTestView(account: account) {
+                Task { await vm.refreshAfterTest(id: account.id) }
+            }
+        }
+    }
+}
+
+// MARK: - 测试账号连接（对齐网页版）
+
+struct AccountConnectionTestView: View {
+    let account: AdminAccount
+    var onFinished: () -> Void = {}
+
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var vm: AccountTestViewModel
+
+    init(account: AdminAccount, onFinished: @escaping () -> Void = {}) {
+        self.account = account
+        self.onFinished = onFinished
+        _vm = StateObject(wrappedValue: AccountTestViewModel(account: account))
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.accentColor.gradient)
+                                .frame(width: 40, height: 40)
+                            Image(systemName: "play.fill")
+                                .foregroundStyle(.white)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(account.name).font(.headline)
+                            HStack(spacing: 6) {
+                                Text((account.type ?? "-").uppercased())
+                                    .font(.caption2.weight(.semibold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color(.tertiarySystemFill))
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                Text("账号").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        StatusBadge(text: account.status ?? "-", tone: StatusTone.forStatus(account.status))
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                Section("选择测试模型") {
+                    if vm.status == .loadingModels {
+                        HStack {
+                            ProgressView()
+                            Text("加载模型列表…").foregroundStyle(.secondary)
+                        }
+                    } else if vm.models.isEmpty {
+                        Text(vm.errorMessage ?? "暂无可用模型").foregroundStyle(.secondary)
+                    } else {
+                        Picker("模型", selection: $vm.selectedModelId) {
+                            ForEach(vm.models) { model in
+                                Text(model.label).tag(model.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .disabled(vm.status == .connecting)
+                    }
+                }
+
+                if vm.isOpenAI {
+                    Section("测试模式") {
+                        Picker("模式", selection: $vm.testMode) {
+                            Text("常规请求").tag("default")
+                            Text("Compact").tag("compact")
+                        }
+                        .pickerStyle(.segmented)
+                        .disabled(vm.status == .connecting)
+                    }
+                }
+
+                if vm.supportsImageTest {
+                    Section("图片提示词") {
+                        TextField("描述要生成的图片", text: $vm.prompt, axis: .vertical)
+                            .lineLimit(2...4)
+                            .disabled(vm.status == .connecting)
+                    }
+                }
+
+                Section("测试输出") {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 4) {
+                            if vm.status == .idle || (vm.lines.isEmpty && vm.status == .ready) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "play.circle")
+                                    Text("准备就绪，点击下方开始测试")
+                                }
+                                .foregroundStyle(.secondary)
+                                .font(.caption)
+                            }
+                            if vm.status == .connecting && vm.lines.isEmpty {
+                                HStack(spacing: 6) {
+                                    ProgressView().controlSize(.small)
+                                    Text("正在连接 API…").foregroundStyle(.orange)
+                                }
+                                .font(.caption)
+                            }
+                            ForEach(vm.lines) { line in
+                                Text(line.text.isEmpty ? " " : line.text)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(color(for: line.tone))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .textSelection(.enabled)
+                            }
+                            if !vm.streamingText.isEmpty {
+                                Text(vm.streamingText + "▍")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.green)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .textSelection(.enabled)
+                            }
+                            if vm.status == .success {
+                                Divider()
+                                Label("测试完成！", systemImage: "checkmark.circle.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.green)
+                            } else if vm.status == .failed {
+                                Divider()
+                                Label(vm.errorMessage ?? "测试失败", systemImage: "xmark.circle.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.red)
+                            }
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
+                    }
+                    .frame(minHeight: 160, maxHeight: 280)
+                    .background(Color(.systemBackground).opacity(0.001))
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowBackground(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.black.opacity(0.9))
+                            .padding(1)
+                    )
+                }
+
+                if !vm.imageURLs.isEmpty {
+                    Section("图片预览") {
+                        ForEach(vm.imageURLs, id: \.self) { url in
+                            if let u = URL(string: url) {
+                                AsyncImage(url: u) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image.resizable().scaledToFit().frame(maxHeight: 220)
+                                    case .failure:
+                                        Text("图片加载失败").foregroundStyle(.secondary)
+                                    default:
+                                        ProgressView()
+                                    }
+                                }
+                            } else {
+                                Text(url).font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                Section {
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.grid.2x2")
+                        Text("测试模型")
+                        Spacer()
+                        Text(vm.selectedModelLabel.isEmpty ? "-" : vm.selectedModelLabel)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .font(.caption)
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "text.bubble")
+                        Text(vm.supportsImageTest ? "图片测试" : "提示词 \"hi\"")
+                        Spacer()
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("测试账号连接")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") {
+                        vm.stop()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        if vm.status == .success || vm.status == .failed {
+                            // retry
+                        }
+                        vm.start()
+                    } label: {
+                        if vm.status == .connecting {
+                            ProgressView()
+                        } else if vm.status == .success {
+                            Label("重试", systemImage: "arrow.clockwise")
+                        } else if vm.status == .failed {
+                            Label("重试", systemImage: "arrow.clockwise")
+                        } else {
+                            Label("开始", systemImage: "play.fill")
+                        }
+                    }
+                    .disabled(!vm.canStart)
+                }
+            }
+            .task {
+                await vm.loadModels()
+            }
+            .onChange(of: vm.status) { newStatus in
+                if newStatus == .success {
+                    onFinished()
+                }
+            }
+        }
+    }
+
+    private func color(for tone: AccountTestLogLine.Tone) -> Color {
+        switch tone {
+        case .info: return Color.gray.opacity(0.9)
+        case .success: return .green
+        case .warning: return .yellow
+        case .error: return .red
+        case .muted: return Color.gray.opacity(0.75)
+        case .content: return Color.green.opacity(0.9)
+        case .accent: return .cyan
         }
     }
 }

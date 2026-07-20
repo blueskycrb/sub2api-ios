@@ -35,6 +35,7 @@ actor APIClient {
     static let shared = APIClient()
 
     private let session: URLSession
+    private let streamSession: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     private var isRefreshing = false
@@ -45,6 +46,12 @@ actor APIClient {
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 60
         session = URLSession(configuration: config)
+
+        let streamConfig = URLSessionConfiguration.default
+        streamConfig.timeoutIntervalForRequest = 120
+        streamConfig.timeoutIntervalForResource = 180
+        streamSession = URLSession(configuration: streamConfig)
+
         decoder = JSONDecoder()
         encoder = JSONEncoder()
     }
@@ -156,6 +163,85 @@ actor APIClient {
             throw api
         } catch {
             throw APIError.decoding(error.localizedDescription)
+        }
+    }
+
+    /// POST and parse Server-Sent Events (`data: {...}`) line by line.
+    func streamSSE<B: Encodable>(
+        _ path: String,
+        body: B,
+        query: [String: Any?] = [:],
+        auth: Bool = true
+    ) -> AsyncThrowingStream<Data, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let url = try await buildURL(path: path, query: query, method: "POST")
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "POST"
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    request.setValue(Locale.current.identifier, forHTTPHeaderField: "Accept-Language")
+                    request.setValue("1", forHTTPHeaderField: "X-Sub2API-User-UI")
+                    if auth {
+                        let token = await MainActor.run { AppSession.shared.accessToken }
+                        if let token {
+                            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                        }
+                    }
+                    request.httpBody = try encoder.encode(body)
+
+                    let (bytes, response) = try await streamSession.bytes(for: request)
+                    guard let http = response as? HTTPURLResponse else {
+                        throw APIError.invalidResponse
+                    }
+                    if !(200...299).contains(http.statusCode) {
+                        var errorData = Data()
+                        for try await b in bytes {
+                            errorData.append(b)
+                            if errorData.count > 4096 { break }
+                        }
+                        let message = extractMessage(from: errorData) ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+                        if http.statusCode == 401 {
+                            throw APIError.unauthorized(message)
+                        }
+                        throw APIError.http(http.statusCode, message)
+                    }
+
+                    var buffer = ""
+                    for try await line in bytes.lines {
+                        if Task.isCancelled {
+                            continuation.finish()
+                            return
+                        }
+                        if line.hasPrefix("data:") {
+                            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+                            if payload.isEmpty || payload == "[DONE]" { continue }
+                            if let data = payload.data(using: .utf8) {
+                                continuation.yield(data)
+                            }
+                        } else if line.isEmpty {
+                            // SSE event separator
+                            continue
+                        } else {
+                            // Some servers may send bare JSON lines
+                            let trimmed = line.trimmingCharacters(in: .whitespaces)
+                            if trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8) {
+                                continuation.yield(data)
+                            } else {
+                                buffer = trimmed
+                                _ = buffer
+                            }
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
         }
     }
 

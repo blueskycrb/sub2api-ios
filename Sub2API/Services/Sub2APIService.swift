@@ -249,9 +249,37 @@ enum Sub2APIService {
         try await APIClient.shared.delete("/admin/accounts/\(id)")
     }
 
-    static func testAdminAccount(id: Int) async throws -> AccountTestResult {
-        struct Body: Encodable {}
-        return try await APIClient.shared.post("/admin/accounts/\(id)/test", body: Body())
+    static func adminAccountModels(id: Int) async throws -> [AccountAvailableModel] {
+        try await APIClient.shared.get("/admin/accounts/\(id)/models")
+    }
+
+    static func testAdminAccountEvents(
+        id: Int,
+        modelId: String,
+        prompt: String = "",
+        mode: String = "default"
+    ) -> AsyncThrowingStream<AccountTestEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let body = AccountTestRequest(model_id: modelId, prompt: prompt, mode: mode)
+                    let dataStream = await APIClient.shared.streamSSE("/admin/accounts/\(id)/test", body: body)
+                    let decoder = JSONDecoder()
+                    for try await data in dataStream {
+                        if Task.isCancelled { break }
+                        if let event = try? decoder.decode(AccountTestEvent.self, from: data) {
+                            continuation.yield(event)
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
     }
 
     static func refreshAdminAccount(id: Int) async throws -> AdminAccount {

@@ -670,27 +670,11 @@ final class AccountsViewModel: ObservableObject {
         }, success: next == "active" ? "已启用账号" : "已停用账号")
     }
 
-    func test(_ item: AdminAccount) async {
-        isActing = true
-        defer { isActing = false }
-        errorMessage = nil
-        successMessage = nil
-        do {
-            let result = try await Sub2APIService.testAdminAccount(id: item.id)
-            if result.success == true {
-                let latency = result.latency_ms.map { String(format: "%.0fms" , $0) } ?? "-"
-                successMessage = "测试成功 · \(latency)"
-            } else {
-                errorMessage = result.message ?? "测试失败"
-            }
-            // refresh detail/list state after test
-            if let refreshed = try? await Sub2APIService.adminAccount(id: item.id) {
-                replace(refreshed)
-            } else {
-                await load()
-            }
-        } catch {
-            errorMessage = error.localizedDescription
+    func refreshAfterTest(id: Int) async {
+        if let refreshed = try? await Sub2APIService.adminAccount(id: id) {
+            replace(refreshed)
+        } else {
+            await load()
         }
     }
 
@@ -769,5 +753,229 @@ final class AccountsViewModel: ObservableObject {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+}
+
+@MainActor
+final class AccountTestViewModel: ObservableObject {
+    enum Status: Equatable {
+        case idle
+        case loadingModels
+        case ready
+        case connecting
+        case success
+        case failed
+    }
+
+    let account: AdminAccount
+
+    @Published var status: Status = .idle
+    @Published var models: [AccountAvailableModel] = []
+    @Published var selectedModelId: String = ""
+    @Published var testMode: String = "default" // default | compact
+    @Published var prompt: String = ""
+    @Published var lines: [AccountTestLogLine] = []
+    @Published var streamingText: String = ""
+    @Published var errorMessage: String?
+    @Published var imageURLs: [String] = []
+
+    private var runTask: Task<Void, Never>?
+
+    var isOpenAI: Bool {
+        (account.platform ?? "").lowercased() == "openai"
+    }
+
+    var supportsImageTest: Bool {
+        let mid = selectedModelId.lowercased()
+        let platform = (account.platform ?? "").lowercased()
+        let type = (account.type ?? "").lowercased()
+        if mid.hasPrefix("gpt-image-") {
+            return platform == "openai"
+        }
+        if mid.hasPrefix("gemini-") && mid.contains("-image") {
+            return platform == "gemini" || (platform == "antigravity" && type == "apikey")
+        }
+        return false
+    }
+
+    var canStart: Bool {
+        !selectedModelId.isEmpty && status != .connecting && status != .loadingModels
+    }
+
+    var selectedModelLabel: String {
+        models.first(where: { $0.id == selectedModelId })?.label ?? selectedModelId
+    }
+
+    init(account: AdminAccount) {
+        self.account = account
+    }
+
+    func loadModels() async {
+        status = .loadingModels
+        errorMessage = nil
+        lines = []
+        streamingText = ""
+        imageURLs = []
+        do {
+            var list = try await Sub2APIService.adminAccountModels(id: account.id)
+            let platform = (account.platform ?? "").lowercased()
+            if platform == "gemini" || platform == "antigravity" {
+                let priority = [
+                    "gemini-3.1-flash-image",
+                    "gemini-2.5-flash-image",
+                    "gemini-3.5-flash",
+                    "gemini-2.5-flash",
+                    "gemini-2.5-pro",
+                    "gemini-3-flash-preview",
+                    "gemini-3-pro-preview",
+                    "gemini-2.0-flash"
+                ]
+                let rank = Dictionary(uniqueKeysWithValues: priority.enumerated().map { ($0.element, $0.offset) })
+                list.sort { a, b in
+                    let ra = rank[a.id] ?? Int.max
+                    let rb = rank[b.id] ?? Int.max
+                    if ra != rb { return ra < rb }
+                    return a.id < b.id
+                }
+            }
+            models = list
+            if platform == "gemini" {
+                selectedModelId = list.first?.id ?? ""
+            } else if let sonnet = list.first(where: { $0.id.lowercased().contains("sonnet") }) {
+                selectedModelId = sonnet.id
+            } else {
+                selectedModelId = list.first?.id ?? ""
+            }
+            status = .ready
+            if list.isEmpty {
+                errorMessage = "该账号暂无可用测试模型"
+            }
+        } catch {
+            status = .failed
+            errorMessage = error.localizedDescription
+            models = []
+            selectedModelId = ""
+        }
+    }
+
+    func start() {
+        guard canStart else { return }
+        runTask?.cancel()
+        runTask = Task { await runTest() }
+    }
+
+    func stop() {
+        runTask?.cancel()
+        runTask = nil
+        if status == .connecting {
+            status = .ready
+            append("已取消测试", .warning)
+        }
+    }
+
+    private func runTest() async {
+        lines = []
+        streamingText = ""
+        imageURLs = []
+        errorMessage = nil
+        status = .connecting
+
+        append("开始测试账号：\(account.name)", .accent)
+        append("账号类型：\(account.type ?? "-")", .muted)
+        append("", .muted)
+
+        let mode = isOpenAI ? testMode : "default"
+        let promptToSend = supportsImageTest ? prompt.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+
+        do {
+            let stream = Sub2APIService.testAdminAccountEvents(
+                id: account.id,
+                modelId: selectedModelId,
+                prompt: promptToSend,
+                mode: mode
+            )
+            for try await event in stream {
+                if Task.isCancelled { return }
+                handle(event)
+            }
+            if status == .connecting {
+                // stream ended without complete event
+                if streamingText.isEmpty {
+                    status = .failed
+                    errorMessage = "测试结束但未收到完成事件"
+                } else {
+                    flushStreaming()
+                    status = .success
+                }
+            }
+        } catch is CancellationError {
+            status = .ready
+        } catch {
+            status = .failed
+            errorMessage = error.localizedDescription
+            append("Error: \(error.localizedDescription)", .error)
+        }
+    }
+
+    private func handle(_ event: AccountTestEvent) {
+        switch event.type {
+        case "test_start":
+            append("已连接到 API", .success)
+            if let model = event.model, !model.isEmpty {
+                append("使用模型：\(model)", .accent)
+            } else {
+                append("使用模型：\(selectedModelId)", .accent)
+            }
+            if supportsImageTest {
+                append("发送图片测试请求…", .muted)
+            } else {
+                append("发送测试消息：\"hi\"", .muted)
+            }
+            append("", .muted)
+            append("响应：", .warning)
+        case "content":
+            if let text = event.text {
+                streamingText += text
+            }
+        case "status":
+            if let text = event.text, !text.isEmpty {
+                append(text, .accent)
+            }
+        case "image":
+            if let url = event.image_url, !url.isEmpty {
+                imageURLs.append(url)
+                append("收到图片 #\(imageURLs.count)", .content)
+            }
+        case "test_complete":
+            flushStreaming()
+            if event.success == true {
+                status = .success
+            } else {
+                status = .failed
+                errorMessage = event.error ?? "测试失败"
+            }
+        case "error":
+            flushStreaming()
+            status = .failed
+            errorMessage = event.error ?? "未知错误"
+            if let err = event.error {
+                append(err, .error)
+            }
+        default:
+            if let text = event.text, !text.isEmpty {
+                append(text, .info)
+            }
+        }
+    }
+
+    private func flushStreaming() {
+        if !streamingText.isEmpty {
+            append(streamingText, .content)
+            streamingText = ""
+        }
+    }
+
+    private func append(_ text: String, _ tone: AccountTestLogLine.Tone) {
+        lines.append(AccountTestLogLine(text: text, tone: tone))
     }
 }
