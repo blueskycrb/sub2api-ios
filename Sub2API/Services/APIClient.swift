@@ -86,8 +86,11 @@ actor APIClient {
         request.setValue(Locale.current.identifier, forHTTPHeaderField: "Accept-Language")
         request.setValue("1", forHTTPHeaderField: "X-Sub2API-User-UI")
 
-        if auth, let token = AppSession.shared.accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if auth {
+            let token = await MainActor.run { AppSession.shared.accessToken }
+            if let token {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
         }
 
         if let body {
@@ -108,7 +111,9 @@ actor APIClient {
 
         if http.statusCode == 401, auth, !retrying {
             if let newToken = await refreshAccessTokenIfNeeded() {
-                AppSession.shared.updateAccessToken(newToken)
+                await MainActor.run {
+                    AppSession.shared.updateAccessToken(newToken)
+                }
                 return try await self.request(path, method: method, query: query, body: body, auth: auth, retrying: true)
             }
             await MainActor.run {
@@ -161,7 +166,8 @@ actor APIClient {
             }
         }
 
-        guard let refreshToken = AppSession.shared.refreshToken else {
+        let refreshToken = await MainActor.run { AppSession.shared.refreshToken }
+        guard let refreshToken else {
             return nil
         }
 
@@ -203,7 +209,7 @@ actor APIClient {
     }
 
     private func buildURL(path: String, query: [String: Any?], method: String) throws -> URL {
-        let base = AppSession.shared.apiBaseURLString
+        let base = await MainActor.run { AppSession.shared.apiBaseURLString }
         guard var components = URLComponents(string: base + normalize(path: path)) else {
             throw APIError.invalidServerURL
         }

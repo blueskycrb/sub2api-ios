@@ -37,7 +37,7 @@ struct AuthResponse: Decodable {
     let user: User
 }
 
-struct TotpLoginResponse: Decodable {
+struct TotpLoginResponse: Decodable, Error {
     let requires_2fa: Bool
     let temp_token: String?
     let user_email_masked: String?
