@@ -1,0 +1,32 @@
+﻿# Sub2API iOS
+
+.gitignore for Xcode / Swift
+
+## Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+timeline.xctimeline
+playground.xcworkspace
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
+## Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+## macOS
+.DS_Store
+
+## Secrets
+*.p12
+*.mobileprovision
+AuthKey_*.p8
