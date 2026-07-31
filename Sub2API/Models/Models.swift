@@ -612,6 +612,61 @@ struct AdminAccount: Codable, Identifiable, Hashable {
     var currentBaseURL: String {
         credentials?.base_url ?? ""
     }
+
+    /// 是否仍在限流窗口内（rate_limit_reset_at 未过期，或仅有 rate_limited_at 标记）
+    var isRateLimitedNow: Bool {
+        if isFutureTimestamp(rate_limit_reset_at) { return true }
+        // 有限流时间戳但没有明确复位时间时，仍视为限流中
+        if let limited = rate_limited_at, !limited.isEmpty, rate_limit_reset_at == nil || rate_limit_reset_at?.isEmpty == true {
+            return true
+        }
+        return false
+    }
+
+    /// 临时不可调度（temp_unschedulable_until 未过期）
+    var isTempUnschedulableNow: Bool {
+        isFutureTimestamp(temp_unschedulable_until)
+    }
+
+    /// 过载窗口（overload_until 未过期）
+    var isOverloadedNow: Bool {
+        isFutureTimestamp(overload_until)
+    }
+
+    /// 运行态“限流类”：限流 / 临时不可调用 / 过载
+    var isLimitedLike: Bool {
+        isRateLimitedNow || isTempUnschedulableNow || isOverloadedNow
+    }
+
+    private func isFutureTimestamp(_ raw: String?) -> Bool {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return false
+        }
+        if let date = AdminAccount.parseAPIDate(raw) {
+            return date > Date()
+        }
+        // 解析失败时保守视为仍生效，避免漏显示
+        return true
+    }
+
+    private static func parseAPIDate(_ raw: String) -> Date? {
+        let isoFrac = ISO8601DateFormatter()
+        isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = isoFrac.date(from: raw) { return d }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        if let d = iso.date(from: raw) { return d }
+        let f1 = DateFormatter()
+        f1.locale = Locale(identifier: "en_US_POSIX")
+        f1.timeZone = TimeZone(secondsFromGMT: 0)
+        f1.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        if let d = f1.date(from: raw) { return d }
+        let f2 = DateFormatter()
+        f2.locale = Locale(identifier: "en_US_POSIX")
+        f2.timeZone = TimeZone(secondsFromGMT: 0)
+        f2.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        return f2.date(from: raw)
+    }
 }
 
 struct AdminAccountCredentialsUpdate: Encodable {

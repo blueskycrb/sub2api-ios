@@ -22,7 +22,7 @@ struct DashboardView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let error = vm.errorMessage {
                     ErrorBanner(message: error) {
-                        Task { await vm.load() }
+                        Task { await vm.refresh() }
                     }
                 }
 
@@ -177,16 +177,20 @@ struct DashboardView: View {
         .navigationTitle("仪表盘")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task { await vm.load() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
+                if vm.isRefreshing || vm.isLoading {
+                    ProgressView()
+                } else {
+                    Button {
+                        Task { await vm.refresh() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
                 }
             }
         }
-        .overlay { if vm.isLoading && vm.stats == nil { LoadingView() } }
-        .task { await vm.load() }
-        .refreshable { await vm.load() }
+        .overlay { if vm.isLoading && !vm.hasContent { LoadingView() } }
+        .task { await vm.loadIfNeeded() }
+        .refreshable { await vm.refresh() }
     }
 }
 

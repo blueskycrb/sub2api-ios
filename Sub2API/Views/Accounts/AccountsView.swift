@@ -41,8 +41,8 @@ struct AccountsView: View {
 
                 Picker("状态", selection: $vm.statusFilter) {
                     Text("全部").tag("all")
-                    Text("启用").tag("active")
-                    Text("停用").tag("inactive")
+                    Text("正常").tag("normal")
+                    Text("限流").tag("limited")
                     Text("异常").tag("error")
                 }
                 .pickerStyle(.segmented)
@@ -157,8 +157,12 @@ struct AccountRowView: View {
                 if item.schedulable == false {
                     StatusBadge(text: "不可调度", tone: .warning)
                 }
-                if item.rate_limit_reset_at != nil || item.rate_limited_at != nil {
+                if item.isRateLimitedNow {
                     StatusBadge(text: "限流中", tone: .danger)
+                } else if item.isTempUnschedulableNow {
+                    StatusBadge(text: "临时不可用", tone: .warning)
+                } else if item.isOverloadedNow {
+                    StatusBadge(text: "过载中", tone: .danger)
                 }
                 if let groups = item.groups, !groups.isEmpty {
                     Text(item.groupNames)

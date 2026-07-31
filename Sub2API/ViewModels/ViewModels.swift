@@ -153,7 +153,11 @@ final class DashboardViewModel: ObservableObject {
     @Published var modelRangeStart: String = ""
     @Published var modelRangeEnd: String = ""
     @Published var isLoading = false
+    @Published var isRefreshing = false
     @Published var errorMessage: String?
+
+    /// 防止下拉刷新 / 首次进入 / 右上角刷新并发互相覆盖
+    private var loadGeneration = 0
 
     private static let dayFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -164,33 +168,84 @@ final class DashboardViewModel: ObservableObject {
         return f
     }()
 
+    var hasContent: Bool { stats != nil }
+
+    /// 首次进入：无数据才全屏 loading
+    func loadIfNeeded() async {
+        guard !hasContent else { return }
+        await load(mode: .initial)
+    }
+
+    /// 用户主动刷新（下拉 / 按钮）
+    func refresh() async {
+        await load(mode: .refresh)
+    }
+
+    /// 兼容旧调用
     func load() async {
-        isLoading = true
-        defer { isLoading = false }
+        await load(mode: hasContent ? .refresh : .initial)
+    }
+
+    private enum LoadMode {
+        case initial
+        case refresh
+    }
+
+    private func load(mode: LoadMode) async {
+        loadGeneration += 1
+        let generation = loadGeneration
+
+        switch mode {
+        case .initial:
+            isLoading = true
+            isRefreshing = false
+        case .refresh:
+            isRefreshing = true
+            // 刷新时保留旧数据，避免页面被清空闪烁
+        }
         errorMessage = nil
 
         let end = Date()
         let start = Calendar.current.date(byAdding: .day, value: -6, to: end) ?? end
-        modelRangeStart = Self.dayFormatter.string(from: start)
-        modelRangeEnd = Self.dayFormatter.string(from: end)
+        let rangeStart = Self.dayFormatter.string(from: start)
+        let rangeEnd = Self.dayFormatter.string(from: end)
 
         do {
             async let statsTask = Sub2APIService.dashboardStats()
             async let modelsTask = Sub2APIService.dashboardModels(
-                startDate: modelRangeStart,
-                endDate: modelRangeEnd
+                startDate: rangeStart,
+                endDate: rangeEnd
             )
-            stats = try await statsTask
+
+            let newStats = try await statsTask
             let modelResp = try? await modelsTask
-            models = modelResp?.models ?? []
+            // 用户信息与统计并行意义不大，放在核心数据之后，失败不阻断刷新
             try? await AppSession.shared.refreshCurrentUser()
+
+            var newAdmin: AdminDashboardStats? = nil
             if AppSession.shared.user?.isAdmin == true {
-                adminStats = try? await Sub2APIService.adminDashboardStats()
-            } else {
-                adminStats = nil
+                newAdmin = try? await Sub2APIService.adminDashboardStats()
             }
+
+            // 只应用最新一次请求结果，避免慢请求回写覆盖新数据
+            guard generation == loadGeneration else { return }
+            modelRangeStart = rangeStart
+            modelRangeEnd = rangeEnd
+            stats = newStats
+            models = modelResp?.models ?? []
+            adminStats = newAdmin
         } catch {
+            guard generation == loadGeneration else { return }
+            // 刷新失败保留旧数据，只提示错误
             errorMessage = error.localizedDescription
+            if mode == .initial && stats == nil {
+                // keep empty
+            }
+        }
+
+        if generation == loadGeneration {
+            isLoading = false
+            isRefreshing = false
         }
     }
 }
@@ -608,20 +663,69 @@ final class AccountsViewModel: ObservableObject {
         return ["all"] + set.sorted()
     }
 
+    /// 与网页/后端对齐的运营筛选：
+    /// - all: 全部
+    /// - normal: 正常可调用（后端 status=active 会排除限流/临时不可调度/不可调度）
+    /// - limited: 限流 + 临时不可调用（合并 rate_limited 与 temp_unschedulable）
+    /// - error: 异常
+    private var apiStatusParam: String? {
+        switch statusFilter {
+        case "all": return nil
+        case "normal": return "active"
+        case "error": return "error"
+        case "limited": return nil // 特殊合并逻辑
+        default: return nil
+        }
+    }
+
     func load() async {
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil
+        let platform = platformFilter == "all" ? nil : platformFilter
+        let searchText = search.nilIfEmpty
         do {
-            let page = try await Sub2APIService.adminAccounts(
-                page: 1,
-                pageSize: 100,
-                platform: platformFilter == "all" ? nil : platformFilter,
-                status: statusFilter == "all" ? nil : statusFilter,
-                search: search.nilIfEmpty
-            )
-            items = page.items
-            total = page.total
+            if statusFilter == "limited" {
+                // 后端无合并筛选：并行拉限流 + 临时不可调度，再按 id 去重
+                async let ratePage = Sub2APIService.adminAccounts(
+                    page: 1,
+                    pageSize: 500,
+                    platform: platform,
+                    status: "rate_limited",
+                    search: searchText
+                )
+                async let tempPage = Sub2APIService.adminAccounts(
+                    page: 1,
+                    pageSize: 500,
+                    platform: platform,
+                    status: "temp_unschedulable",
+                    search: searchText
+                )
+                let (a, b) = try await (ratePage, tempPage)
+                var map: [Int: AdminAccount] = [:]
+                for item in a.items + b.items {
+                    map[item.id] = item
+                }
+                // 客户端再兜底一次：过载中的账号若未被上述接口覆盖，也并入（需全量时才有；这里仅对已返回集合补标记）
+                let merged = Array(map.values).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                items = merged
+                // 去重后的列表数量；若服务端总量更大（超 pageSize），用两边 total 之和作为上限提示
+                if a.items.count < a.total || b.items.count < b.total {
+                    total = max(merged.count, a.total + b.total)
+                } else {
+                    total = merged.count
+                }
+            } else {
+                let page = try await Sub2APIService.adminAccounts(
+                    page: 1,
+                    pageSize: 500,
+                    platform: platform,
+                    status: apiStatusParam,
+                    search: searchText
+                )
+                items = page.items
+                total = page.total
+            }
             if let selected, let refreshed = items.first(where: { $0.id == selected.id }) {
                 self.selected = refreshed
             }
