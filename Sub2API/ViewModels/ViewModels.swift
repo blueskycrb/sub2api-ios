@@ -217,9 +217,14 @@ final class DashboardViewModel: ObservableObject {
 
         clearCancellationErrorIfNeeded()
 
+        // 先拷到局部常量，避免并发闭包捕获 weak var self 编译失败
+        // 再经 GCD 创建无父 Task，切断 refreshable 取消继承
+        let modeCopy = mode
+        let generationCopy = generation
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let viewModel = self
             Task { @MainActor in
-                await self?.performLoad(mode: mode, generation: generation)
+                await viewModel?.performLoad(mode: modeCopy, generation: generationCopy)
             }
         }
 
