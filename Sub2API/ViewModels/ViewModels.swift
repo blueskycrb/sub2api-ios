@@ -156,8 +156,10 @@ final class DashboardViewModel: ObservableObject {
     @Published var isRefreshing = false
     @Published var errorMessage: String?
 
-    /// 防止下拉刷新 / 首次进入 / 右上角刷新并发互相覆盖
+    /// 防止并发刷新互相覆盖
     private var loadGeneration = 0
+    /// 与 SwiftUI `.refreshable` 取消链路解耦的实际加载任务
+    private var inFlightWork: Task<Void, Never>?
 
     private static let dayFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -173,17 +175,17 @@ final class DashboardViewModel: ObservableObject {
     /// 首次进入：无数据才全屏 loading
     func loadIfNeeded() async {
         guard !hasContent else { return }
-        await load(mode: .initial)
+        await enqueueLoad(mode: .initial)
     }
 
     /// 用户主动刷新（下拉 / 按钮）
     func refresh() async {
-        await load(mode: .refresh)
+        await enqueueLoad(mode: .refresh)
     }
 
     /// 兼容旧调用
     func load() async {
-        await load(mode: hasContent ? .refresh : .initial)
+        await enqueueLoad(mode: hasContent ? .refresh : .initial)
     }
 
     private enum LoadMode {
@@ -191,9 +193,29 @@ final class DashboardViewModel: ObservableObject {
         case refresh
     }
 
-    private func load(mode: LoadMode) async {
+    /// 把网络请求放到 detached 任务里，避免 `.refreshable` 手势结束时把 URLSession cancel 掉并弹出 cancelled。
+    private func enqueueLoad(mode: LoadMode) async {
         loadGeneration += 1
         let generation = loadGeneration
+
+        // 不用 cancel 旧任务：靠 generation 丢弃过期结果，避免主动制造 CancellationError
+        let work = Task.detached { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performLoad(mode: mode, generation: generation)
+        }
+        inFlightWork = work
+
+        // 用 Never-failure continuation 等待；外层即使被取消也不再把 cancelled 写进 UI
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            Task.detached { @MainActor in
+                _ = await work.value
+                continuation.resume()
+            }
+        }
+    }
+
+    private func performLoad(mode: LoadMode, generation: Int) async {
+        guard generation == loadGeneration else { return }
 
         switch mode {
         case .initial:
@@ -201,16 +223,25 @@ final class DashboardViewModel: ObservableObject {
             isRefreshing = false
         case .refresh:
             isRefreshing = true
-            // 刷新时保留旧数据，避免页面被清空闪烁
+            // 刷新时保留旧数据与旧错误提示，成功后再清错误，减少视图结构抖动
         }
-        errorMessage = nil
 
         let end = Date()
         let start = Calendar.current.date(byAdding: .day, value: -6, to: end) ?? end
         let rangeStart = Self.dayFormatter.string(from: start)
         let rangeEnd = Self.dayFormatter.string(from: end)
 
+        defer {
+            if generation == loadGeneration {
+                isLoading = false
+                isRefreshing = false
+            }
+        }
+
         do {
+            // 若当前任务已被取消，直接安静退出
+            try Task.checkCancellation()
+
             async let statsTask = Sub2APIService.dashboardStats()
             async let modelsTask = Sub2APIService.dashboardModels(
                 startDate: rangeStart,
@@ -218,8 +249,8 @@ final class DashboardViewModel: ObservableObject {
             )
 
             let newStats = try await statsTask
+            try Task.checkCancellation()
             let modelResp = try? await modelsTask
-            // 用户信息与统计并行意义不大，放在核心数据之后，失败不阻断刷新
             try? await AppSession.shared.refreshCurrentUser()
 
             var newAdmin: AdminDashboardStats? = nil
@@ -227,26 +258,41 @@ final class DashboardViewModel: ObservableObject {
                 newAdmin = try? await Sub2APIService.adminDashboardStats()
             }
 
-            // 只应用最新一次请求结果，避免慢请求回写覆盖新数据
             guard generation == loadGeneration else { return }
+            try Task.checkCancellation()
+
             modelRangeStart = rangeStart
             modelRangeEnd = rangeEnd
             stats = newStats
             models = modelResp?.models ?? []
             adminStats = newAdmin
+            errorMessage = nil
+        } catch is CancellationError {
+            // 下拉刷新被系统取消、或被新的刷新替换：不提示
+            return
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            return
         } catch {
             guard generation == loadGeneration else { return }
-            // 刷新失败保留旧数据，只提示错误
+            if Self.isCancellation(error) {
+                return
+            }
+            // 刷新失败保留旧数据，只提示真实错误
             errorMessage = error.localizedDescription
-            if mode == .initial && stats == nil {
-                // keep empty
+        }
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+        if let api = error as? APIError, case .network(let message) = api {
+            let lower = message.lowercased()
+            if lower.contains("cancel") || lower.contains("cancelled") || lower.contains("canceled") {
+                return true
             }
         }
-
-        if generation == loadGeneration {
-            isLoading = false
-            isRefreshing = false
-        }
+        let lower = error.localizedDescription.lowercased()
+        return lower.contains("cancel") || lower.contains("cancelled") || lower.contains("canceled")
     }
 }
 

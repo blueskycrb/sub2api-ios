@@ -177,20 +177,23 @@ struct DashboardView: View {
         .navigationTitle("仪表盘")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if vm.isRefreshing || vm.isLoading {
-                    ProgressView()
-                } else {
-                    Button {
-                        Task { await vm.refresh() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
+                // 保持按钮结构稳定，避免刷新中替换为 ProgressView 触发 refreshable 取消
+                Button {
+                    Task { await vm.refresh() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .opacity(vm.isRefreshing || vm.isLoading ? 0.35 : 1)
                 }
+                .disabled(vm.isRefreshing || vm.isLoading)
+                .accessibilityLabel("刷新")
             }
         }
         .overlay { if vm.isLoading && !vm.hasContent { LoadingView() } }
         .task { await vm.loadIfNeeded() }
-        .refreshable { await vm.refresh() }
+        .refreshable {
+            // 交给 ViewModel 做“抗取消”加载；此处只等待其完成以驱动系统刷新控件
+            await vm.refresh()
+        }
     }
 }
 
