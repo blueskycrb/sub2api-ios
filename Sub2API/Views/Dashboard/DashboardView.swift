@@ -20,7 +20,7 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if let error = vm.errorMessage {
+                if let error = vm.visibleErrorMessage {
                     ErrorBanner(message: error) {
                         Task { await vm.refresh() }
                     }

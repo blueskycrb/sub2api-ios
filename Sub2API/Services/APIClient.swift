@@ -113,6 +113,14 @@ actor APIClient {
         } catch let urlError as URLError where urlError.code == .cancelled {
             throw CancellationError()
         } catch {
+            let ns = error as NSError
+            if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled {
+                throw CancellationError()
+            }
+            let lower = error.localizedDescription.lowercased()
+            if lower.contains("cancel") {
+                throw CancellationError()
+            }
             throw APIError.network(error.localizedDescription)
         }
 

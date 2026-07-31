@@ -158,8 +158,6 @@ final class DashboardViewModel: ObservableObject {
 
     /// 防止并发刷新互相覆盖
     private var loadGeneration = 0
-    /// 与 SwiftUI `.refreshable` 取消链路解耦的实际加载任务
-    private var inFlightWork: Task<Void, Never>?
 
     private static let dayFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -172,6 +170,13 @@ final class DashboardViewModel: ObservableObject {
 
     var hasContent: Bool { stats != nil }
 
+    /// 供 View 过滤：取消类错误永不展示
+    var visibleErrorMessage: String? {
+        guard let msg = errorMessage else { return nil }
+        if Self.isCancellationMessage(msg) { return nil }
+        return msg
+    }
+
     /// 首次进入：无数据才全屏 loading
     func loadIfNeeded() async {
         guard !hasContent else { return }
@@ -180,6 +185,7 @@ final class DashboardViewModel: ObservableObject {
 
     /// 用户主动刷新（下拉 / 按钮）
     func refresh() async {
+        clearCancellationErrorIfNeeded()
         await enqueueLoad(mode: .refresh)
     }
 
@@ -193,24 +199,41 @@ final class DashboardViewModel: ObservableObject {
         case refresh
     }
 
-    /// 把网络请求放到 detached 任务里，避免 `.refreshable` 手势结束时把 URLSession cancel 掉并弹出 cancelled。
+    /// SwiftUI `.refreshable` 会取消外层 Task。
+    /// 若在已取消上下文直接创建 Task/Task.detached，子任务会天生 cancelled，
+    /// URLSession 随即失败并弹出 cancelled。
+    /// 这里先跳到 GCD 再创建 Task，切断取消继承；外层只轮询刷新状态。
     private func enqueueLoad(mode: LoadMode) async {
         loadGeneration += 1
         let generation = loadGeneration
 
-        // 不用 cancel 旧任务：靠 generation 丢弃过期结果，避免主动制造 CancellationError
-        let work = Task.detached { @MainActor [weak self] in
-            guard let self else { return }
-            await self.performLoad(mode: mode, generation: generation)
+        switch mode {
+        case .initial:
+            isLoading = true
+            isRefreshing = false
+        case .refresh:
+            isRefreshing = true
         }
-        inFlightWork = work
 
-        // 用 Never-failure continuation 等待；外层即使被取消也不再把 cancelled 写进 UI
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            Task.detached { @MainActor in
-                _ = await work.value
-                continuation.resume()
+        clearCancellationErrorIfNeeded()
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            Task { @MainActor in
+                await self?.performLoad(mode: mode, generation: generation)
             }
+        }
+
+        await waitForGeneration(generation)
+    }
+
+    private func waitForGeneration(_ generation: Int) async {
+        for _ in 0..<600 {
+            if Task.isCancelled { return }
+            if loadGeneration != generation { return }
+            if loadGeneration == generation && !isLoading && !isRefreshing {
+                return
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
         }
     }
 
@@ -223,7 +246,6 @@ final class DashboardViewModel: ObservableObject {
             isRefreshing = false
         case .refresh:
             isRefreshing = true
-            // 刷新时保留旧数据与旧错误提示，成功后再清错误，减少视图结构抖动
         }
 
         let end = Date()
@@ -239,27 +261,24 @@ final class DashboardViewModel: ObservableObject {
         }
 
         do {
-            // 若当前任务已被取消，直接安静退出
-            try Task.checkCancellation()
+            // 顺序请求，避免 async let 在边缘取消场景下互相牵连
+            let newStats = try await Sub2APIService.dashboardStats()
+            guard generation == loadGeneration else { return }
 
-            async let statsTask = Sub2APIService.dashboardStats()
-            async let modelsTask = Sub2APIService.dashboardModels(
+            let modelResp = try? await Sub2APIService.dashboardModels(
                 startDate: rangeStart,
                 endDate: rangeEnd
             )
+            guard generation == loadGeneration else { return }
 
-            let newStats = try await statsTask
-            try Task.checkCancellation()
-            let modelResp = try? await modelsTask
             try? await AppSession.shared.refreshCurrentUser()
+            guard generation == loadGeneration else { return }
 
             var newAdmin: AdminDashboardStats? = nil
             if AppSession.shared.user?.isAdmin == true {
                 newAdmin = try? await Sub2APIService.adminDashboardStats()
             }
-
             guard generation == loadGeneration else { return }
-            try Task.checkCancellation()
 
             modelRangeStart = rangeStart
             modelRangeEnd = rangeEnd
@@ -267,32 +286,39 @@ final class DashboardViewModel: ObservableObject {
             models = modelResp?.models ?? []
             adminStats = newAdmin
             errorMessage = nil
-        } catch is CancellationError {
-            // 下拉刷新被系统取消、或被新的刷新替换：不提示
-            return
-        } catch let urlError as URLError where urlError.code == .cancelled {
-            return
         } catch {
             guard generation == loadGeneration else { return }
             if Self.isCancellation(error) {
                 return
             }
-            // 刷新失败保留旧数据，只提示真实错误
             errorMessage = error.localizedDescription
         }
     }
 
-    private static func isCancellation(_ error: Error) -> Bool {
+    private func clearCancellationErrorIfNeeded() {
+        if let msg = errorMessage, Self.isCancellationMessage(msg) {
+            errorMessage = nil
+        }
+    }
+
+    static func isCancellationMessage(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        if lower.contains("cancel") { return true }
+        if message.contains("取消") { return true }
+        return false
+    }
+
+    static func isCancellation(_ error: Error) -> Bool {
         if error is CancellationError { return true }
         if let urlError = error as? URLError, urlError.code == .cancelled { return true }
         if let api = error as? APIError, case .network(let message) = api {
-            let lower = message.lowercased()
-            if lower.contains("cancel") || lower.contains("cancelled") || lower.contains("canceled") {
-                return true
-            }
+            return isCancellationMessage(message)
         }
-        let lower = error.localizedDescription.lowercased()
-        return lower.contains("cancel") || lower.contains("cancelled") || lower.contains("canceled")
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled {
+            return true
+        }
+        return isCancellationMessage(error.localizedDescription)
     }
 }
 
